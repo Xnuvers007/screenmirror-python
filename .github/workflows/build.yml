@@ -56,7 +56,6 @@ jobs:
             --name ScreenMirror \
             --icon=icon.ico \
             --add-data="icon.ico${SEP}." \
-            --upx-dir=/usr/local/bin \
             screenmirror.py
 
       - name: 7. Debug dist folder (optional)
