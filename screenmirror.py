@@ -452,7 +452,7 @@ def _print_device_info(d, lang="en"):
     print(f"{Fore.CYAN}  ╚══════════════════════════════════════════════════════════╝\n")
 
 
-def check_device(lang="en"):
+def check_device(lang="en", allow_multi=False):
     with_spinner("Memulai ADB server..." if lang == "id" else "Starting ADB server...",
                  lambda: subprocess.run([ADB_EXE, "start-server"],
                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
@@ -481,8 +481,15 @@ def check_device(lang="en"):
             device_infos.append(info)
             print(f"    {Fore.YELLOW}[{i}] {Fore.WHITE}{info['brand']} {info['model']}  "
                   f"{Fore.CYAN}({dev_id})  {Fore.GREEN}Android {info['android']}")
-        ch = get_input(f"  Pilih perangkat [1-{len(devices)}]: " if lang == "id" else f"  Select device [1-{len(devices)}]: ",
-                       [str(i) for i in range(1, len(devices)+1)], "1")
+        if allow_multi:
+            print(f"    {Fore.YELLOW}[0] {Fore.WHITE}{'Pilih Semua Perangkat (Multi-Mirror)' if lang == 'id' else 'Select All Devices (Multi-Mirror)'}")
+            ch = get_input(f"  Pilih perangkat [0-{len(devices)}]: " if lang == "id" else f"  Select device [0-{len(devices)}]: ",
+                           [str(i) for i in range(0, len(devices)+1)], "1")
+            if ch == "0":
+                return device_infos
+        else:
+            ch = get_input(f"  Pilih perangkat [1-{len(devices)}]: " if lang == "id" else f"  Select device [1-{len(devices)}]: ",
+                           [str(i) for i in range(1, len(devices)+1)], "1")
         device_info = device_infos[int(ch) - 1]
     else:
         device_info = with_spinner("Membaca info perangkat..." if lang == "id" else "Reading device info...",
@@ -883,9 +890,9 @@ def configure_scrcpy(lang, device_info=None):
         print()
         if lang == "id":
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
-            print(f"{Fore.CYAN}  │  [SCREENSHOT SHORTCUT — Ctrl+Shift+S]               │")
-            print(f"{Fore.CYAN}  │  Tekan Ctrl+Shift+S saat jendela mirror aktif untuk │")
-            print(f"{Fore.CYAN}  │  screenshot layar HP langsung dari laptop.           │")
+            print(f"{Fore.CYAN}  │  [SCREENSHOT SHORTCUT — Tombol 'S' di Terminal]     │")
+            print(f"{Fore.CYAN}  │  Tekan tombol 'S' pada jendela terminal ini saat    │")
+            print(f"{Fore.CYAN}  │  mirror aktif untuk mengambil screenshot layar HP.  │")
             print(f"{Fore.CYAN}  │  File disimpan di folder saat ini dengan format:    │")
             print(f"{Fore.CYAN}  │  screenshot_YYYYMMDD_HHMMSS.png                     │")
             print(f"{Fore.CYAN}  │  ✔ Cocok untuk: Ambil bukti, dokumentasi, debug    │")
@@ -893,9 +900,9 @@ def configure_scrcpy(lang, device_info=None):
             shortcut_mod = get_input("  Aktifkan Screenshot Shortcut? [y/n] (default: n): ", ["y","n"], "n")
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
-            print(f"{Fore.CYAN}  │  [SCREENSHOT SHORTCUT — Ctrl+Shift+S]               │")
-            print(f"{Fore.CYAN}  │  Press Ctrl+Shift+S while the mirror window is open │")
-            print(f"{Fore.CYAN}  │  to screenshot the phone screen from your laptop.   │")
+            print(f"{Fore.CYAN}  │  [SCREENSHOT SHORTCUT — Press 'S' in Terminal]      │")
+            print(f"{Fore.CYAN}  │  Press 'S' in this terminal window while the mirror │")
+            print(f"{Fore.CYAN}  │  is active to take a screenshot of the phone screen.│")
             print(f"{Fore.CYAN}  │  File saved in the current folder as:               │")
             print(f"{Fore.CYAN}  │  screenshot_YYYYMMDD_HHMMSS.png                     │")
             print(f"{Fore.CYAN}  │  ✔ Great for: Capturing evidence, docs, debugging   │")
@@ -1649,7 +1656,7 @@ def _live_stats_thread(device_id, start_time, stop_event, lang):
         print()  # newline after stats
 
 
-def launch_scrcpy(config, device_info, lang="id", max_retries=3):
+def launch_scrcpy(config, device_info, lang="id", max_retries=3, multi=False):
     log_info("Menyiapkan scrcpy..." if lang == "id" else "Preparing scrcpy...")
     args = [SCRCPY_EXE]
 
@@ -1688,7 +1695,6 @@ def launch_scrcpy(config, device_info, lang="id", max_retries=3):
         if config.get("stay_awake")     == "y": args.append("--stay-awake")
         if config.get("turn_screen_off")== "y": args.append("--turn-screen-off")
         if config.get("no_control")     == "y": args.append("--no-control")
-        if config.get("shortcut_mod")   == "y": args.append("--shortcut-mod=lctrl")
 
     if config.get("record_filename"):
         args.append(f"--record={config['record_filename']}")
@@ -1713,6 +1719,13 @@ def launch_scrcpy(config, device_info, lang="id", max_retries=3):
     attempt   = 0
     start     = time.time()
 
+    if multi:
+        try:
+            return subprocess.Popen(args)
+        except Exception as e:
+            log_err(f"Failed to launch scrcpy: {e}")
+            return None
+
     while True:
         attempt += 1
         # ── Live stats thread ──
@@ -1725,9 +1738,32 @@ def launch_scrcpy(config, device_info, lang="id", max_retries=3):
         stats_t.start()
 
         try:
-            ret = subprocess.run(args).returncode
+            p = subprocess.Popen(args)
+            if os.name == "nt" and config.get("shortcut_mod") == "y":
+                import msvcrt
+                while p.poll() is None:
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch()
+                        if key.lower() == b's':
+                            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            fn = f"screenshot_{ts}.png"
+                            print(f"\n{Fore.CYAN}  📸 Mengambil screenshot ke {fn}..." if lang == "id" else f"\n{Fore.CYAN}  📸 Taking screenshot to {fn}...")
+                            cmd = [ADB_EXE]
+                            if device_id: cmd.extend(["-s", device_id])
+                            cmd.extend(["exec-out", "screencap", "-p"])
+                            with open(fn, "wb") as f:
+                                subprocess.run(cmd, stdout=f)
+                            print(f"  {Fore.GREEN}Berhasil disimpan!\n")
+                    time.sleep(0.05)
+            else:
+                p.wait()
+            ret = p.returncode
         except KeyboardInterrupt:
             ret = 0  # user manually stopped, no reconnect
+            try:
+                p.terminate()
+            except:
+                pass
         finally:
             stop_stats.set()
             stats_t.join()
@@ -1768,13 +1804,54 @@ def launch_scrcpy(config, device_info, lang="id", max_retries=3):
 
 def connect_usb(lang):
     print_banner(lang)
-    device_info = check_device(lang)
-    if not device_info: return
-    conf = select_or_configure(lang, device_info)
-    if show_config_summary(conf, device_info, lang) != "y": return
-    conf["mode"] = "usb"
-    launch_scrcpy(conf, device_info)
+    devices = check_device(lang, allow_multi=True)
+    if not devices: return
 
+    is_multi = isinstance(devices, list)
+    if not is_multi:
+        devices = [devices]
+
+    conf = select_or_configure(lang, devices[0])
+    
+    if is_multi:
+        conf["record_filename"] = "" # Disable recording for multi
+        log_note("Fitur recording dinonaktifkan dalam mode Multi-Device." if lang == "id" else "Recording disabled in Multi-Device mode.")
+        if get_input("  Lanjutkan? [y/n]: " if lang == "id" else "  Continue? [y/n]: ", ["y","n"], "y") != "y": return
+    else:
+        if show_config_summary(conf, devices[0], lang) != "y": return
+
+    conf["mode"] = "usb"
+    
+    if is_multi:
+        processes = []
+        for d in devices:
+            p = launch_scrcpy(conf, d, lang, multi=True)
+            if p: processes.append(p)
+        print(f"\n{Fore.CYAN}  Multi-Mirror berjalan. Tekan Enter untuk menghentikan semua sesi." if lang=="id" else f"\n{Fore.CYAN}  Multi-Mirror running. Press Enter to stop all sessions.")
+        input()
+        for p in processes:
+            try: p.terminate()
+            except: pass
+    else:
+        launch_scrcpy(conf, devices[0], lang)
+
+
+def _scan_mdns(service_type, lang="en"):
+    print(f"  {Fore.CYAN}Memindai jaringan (mDNS)..." if lang == "id" else f"  {Fore.CYAN}Scanning network (mDNS)...")
+    try:
+        subprocess.run([ADB_EXE, "start-server"], capture_output=True)
+        time.sleep(1)
+        res = subprocess.run([ADB_EXE, "mdns", "services"], capture_output=True, text=True, timeout=5)
+        lines = res.stdout.strip().splitlines()
+        devices = []
+        for line in lines:
+            if service_type in line:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    devices.append(parts[0])
+        return devices
+    except Exception:
+        return []
 
 def connect_wifi(lang):
     print_banner(lang)
@@ -1782,12 +1859,22 @@ def connect_wifi(lang):
     device_info = check_device(lang)
     if not device_info: return
 
-    port = get_input("  Port TCP (default 5555): ", default="5555")
-    subprocess.run([ADB_EXE, "-s", device_info["id"], "tcpip", port])
-    time.sleep(2)
-
-    ip = get_input("  Masukkan IP HP Android: " if lang=="id" else "  Enter Android phone IP address: ")
-    if not ip: return
+    presets = _load_presets()
+    last_ip = presets.get("last_wifi_ip")
+    last_port = presets.get("last_wifi_port", "5555")
+    
+    ip, port = "", ""
+    if last_ip:
+        use_last = get_input(f"  Gunakan IP sebelumnya ({last_ip}:{last_port})? [y/n]: " if lang=="id" else f"  Use previous IP ({last_ip}:{last_port})? [y/n]: ", ["y","n"], "y")
+        if use_last == "y":
+            ip, port = last_ip, last_port
+            
+    if not ip:
+        port = get_input("  Port TCP (default 5555): ", default="5555")
+        subprocess.run([ADB_EXE, "-s", device_info["id"], "tcpip", port])
+        time.sleep(2)
+        ip = get_input("  Masukkan IP HP Android: " if lang=="id" else "  Enter Android phone IP address: ")
+        if not ip: return
 
     log_warn("Cabut kabel USB sekarang!" if lang=="id" else "Unplug the USB cable now!")
     input("  Tekan Enter saat siap..." if lang=="id" else "  Press Enter when ready...")
@@ -1795,6 +1882,10 @@ def connect_wifi(lang):
     log_info(f"Menghubungkan ke {ip}:{port}..." if lang=="id" else f"Connecting to {ip}:{port}...")
     subprocess.run([ADB_EXE, "connect", f"{ip}:{port}"])
     time.sleep(2)
+    
+    presets["last_wifi_ip"] = ip
+    presets["last_wifi_port"] = port
+    _save_presets(presets)
 
     conf = select_or_configure(lang, device_info)
     if show_config_summary(conf, device_info, lang) != "y": return
@@ -1808,7 +1899,19 @@ def connect_wd(lang):
 
     do_pair = get_input("  Pertama kali pairing? [y/n] (default: y): " if lang=="id" else "  First time pairing? [y/n] (default: y): ", ["y","n"], "y")
     if do_pair == "y":
-        pair_addr = get_input("  Masukkan IP:PORT pairing: " if lang=="id" else "  Enter pairing IP:PORT (e.g. 192.168.1.5:43521): ")
+        pair_addr = ""
+        devices = _scan_mdns("_adb-tls-pairing", lang)
+        if devices:
+            print(f"\n  {Fore.CYAN}Perangkat Ditemukan (Pairing):")
+            for i, d in enumerate(devices, 1):
+                print(f"    {Fore.YELLOW}[{i}] {Fore.WHITE}{d}")
+            print(f"    {Fore.YELLOW}[0] {Fore.WHITE}Input Manual")
+            ch = get_input(f"  Pilih [0-{len(devices)}]: ", [str(x) for x in range(len(devices)+1)])
+            if ch != "0":
+                pair_addr = devices[int(ch)-1]
+        
+        if not pair_addr:
+            pair_addr = get_input("  Masukkan IP:PORT pairing: " if lang=="id" else "  Enter pairing IP:PORT (e.g. 192.168.1.5:43521): ")
         pair_code = get_input("  Masukkan kode 6 digit dari HP: " if lang=="id" else "  Enter 6-digit code from phone: ")
         if not pair_addr or not pair_code: return
         subprocess.run([ADB_EXE, "start-server"], stdout=subprocess.DEVNULL)
@@ -1820,8 +1923,23 @@ def connect_wd(lang):
             return
         log_ok("Pairing berhasil!" if lang=="id" else "Pairing successful!")
 
-    ip   = get_input("  Masukkan IP HP: " if lang=="id" else "  Enter phone IP: ")
-    port = get_input("  Masukkan Port (dari Wireless Debugging): " if lang=="id" else "  Enter Port (from Wireless Debugging): ")
+    ip, port = "", ""
+    devices = _scan_mdns("_adb-tls-connect", lang)
+    if devices:
+        print(f"\n  {Fore.CYAN}Perangkat Ditemukan (Connect):")
+        for i, d in enumerate(devices, 1):
+            print(f"    {Fore.YELLOW}[{i}] {Fore.WHITE}{d}")
+        print(f"    {Fore.YELLOW}[0] {Fore.WHITE}Input Manual")
+        ch = get_input(f"  Pilih [0-{len(devices)}]: ", [str(x) for x in range(len(devices)+1)])
+        if ch != "0":
+            addr = devices[int(ch)-1]
+            if ":" in addr:
+                ip, port = addr.split(":", 1)
+                
+    if not ip or not port:
+        ip   = get_input("  Masukkan IP HP: " if lang=="id" else "  Enter phone IP: ")
+        port = get_input("  Masukkan Port (dari Wireless Debugging): " if lang=="id" else "  Enter Port (from Wireless Debugging): ")
+        
     if not ip or not port: return
 
     log_info(f"Menghubungkan ke {ip}:{port}...")
@@ -1839,6 +1957,77 @@ def connect_wd(lang):
     if show_config_summary(conf, device_info, lang) != "y": return
     conf.update({"mode":"wd","ip":ip,"port":port})
     launch_scrcpy(conf, device_info)
+
+
+def install_apk(lang):
+    print_banner(lang)
+    devices = check_device(lang, allow_multi=True)
+    if not devices: return
+
+    is_multi = isinstance(devices, list)
+    if not is_multi: devices = [devices]
+
+    apk_path = get_input("  Drag & Drop file APK ke sini: " if lang=="id" else "  Drag & Drop APK file here: ")
+    apk_path = apk_path.strip().strip("'").strip('"')
+    if not os.path.isfile(apk_path):
+        log_err("File tidak ditemukan!" if lang=="id" else "File not found!")
+        input("  Enter...")
+        return
+    
+    for d in devices:
+        log_info(f"Menginstall ke {d['id']}..." if lang=="id" else f"Installing to {d['id']}...")
+        subprocess.run([ADB_EXE, "-s", d["id"], "install", apk_path])
+    
+    log_ok("Selesai!" if lang=="id" else "Done!")
+    input("  Enter...")
+
+def push_file(lang):
+    print_banner(lang)
+    devices = check_device(lang, allow_multi=True)
+    if not devices: return
+
+    is_multi = isinstance(devices, list)
+    if not is_multi: devices = [devices]
+
+    file_path = get_input("  Drag & Drop file/folder ke sini: " if lang=="id" else "  Drag & Drop file/folder here: ")
+    file_path = file_path.strip().strip("'").strip('"')
+    if not os.path.exists(file_path):
+        log_err("File/Folder tidak ditemukan!" if lang=="id" else "File/Folder not found!")
+        input("  Enter...")
+        return
+    
+    target_dir = "/storage/emulated/0/screenmirror/"
+    for d in devices:
+        log_info(f"Mengirim ke {d['id']}..." if lang=="id" else f"Pushing to {d['id']}...")
+        subprocess.run([ADB_EXE, "-s", d["id"], "shell", "mkdir", "-p", target_dir])
+        subprocess.run([ADB_EXE, "-s", d["id"], "push", file_path, target_dir])
+        
+    log_ok("Selesai!" if lang=="id" else "Done!")
+    input("  Enter...")
+
+def start_wireless_mic(lang):
+    print_banner(lang)
+    devices = check_device(lang, allow_multi=True)
+    if not devices: return
+
+    is_multi = isinstance(devices, list)
+    if not is_multi: devices = [devices]
+
+    log_info("Memulai Wireless Mic mode (tanpa video)..." if lang=="id" else "Starting Wireless Mic mode (no video)...")
+    processes = []
+    for d in devices:
+        args = [SCRCPY_EXE, "-s", d["id"], "--no-video", "--audio-source=mic", "--audio-codec=opus"]
+        try:
+            p = subprocess.Popen(args)
+            processes.append(p)
+        except Exception as e:
+            log_err(f"Gagal / Failed: {e}")
+            
+    print(f"\n{Fore.CYAN}  Mic berjalan. Tekan Enter untuk menghentikan." if lang=="id" else f"\n{Fore.CYAN}  Mic running. Press Enter to stop.")
+    input()
+    for p in processes:
+        try: p.terminate()
+        except: pass
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1896,6 +2085,9 @@ def main():
                 print(f"    {Fore.YELLOW}[2] {Fore.WHITE}Koneksi WiFi            {Fore.CYAN}│ {Fore.WHITE}Mirror via jaringan WiFi")
                 print(f"    {Fore.YELLOW}[3] {Fore.WHITE}Wireless Debugging      {Fore.CYAN}│ {Fore.WHITE}Mirror via Android 11+ Wireless Debug")
                 print(f"    {Fore.YELLOW}[4] {Fore.WHITE}Riwayat Sesi            {Fore.CYAN}│ {Fore.WHITE}Lihat log sesi mirroring sebelumnya")
+                print(f"    {Fore.YELLOW}[5] {Fore.WHITE}Install APK (Sideload)  {Fore.CYAN}│ {Fore.WHITE}Drag & drop file APK ke HP")
+                print(f"    {Fore.YELLOW}[6] {Fore.WHITE}Kirim File (Push)       {Fore.CYAN}│ {Fore.WHITE}Transfer file ke HP")
+                print(f"    {Fore.YELLOW}[7] {Fore.WHITE}Wireless Mic Mode       {Fore.CYAN}│ {Fore.WHITE}Gunakan HP sebagai mic PC")
                 print(f"    {Fore.RED}[0] {Fore.WHITE}Kembali ke Pilihan Bahasa\n")
             else:
                 print(f"  {Fore.CYAN}Main Menu:\n")
@@ -1903,14 +2095,20 @@ def main():
                 print(f"    {Fore.YELLOW}[2] {Fore.WHITE}WiFi Connection         {Fore.CYAN}│ {Fore.WHITE}Mirror via WiFi network")
                 print(f"    {Fore.YELLOW}[3] {Fore.WHITE}Wireless Debugging      {Fore.CYAN}│ {Fore.WHITE}Mirror via Android 11+ Wireless Debug")
                 print(f"    {Fore.YELLOW}[4] {Fore.WHITE}Session History         {Fore.CYAN}│ {Fore.WHITE}View previous mirroring session logs")
+                print(f"    {Fore.YELLOW}[5] {Fore.WHITE}Install APK (Sideload)  {Fore.CYAN}│ {Fore.WHITE}Drag & drop APK file to phone")
+                print(f"    {Fore.YELLOW}[6] {Fore.WHITE}Send File (Push)        {Fore.CYAN}│ {Fore.WHITE}Transfer file to phone")
+                print(f"    {Fore.YELLOW}[7] {Fore.WHITE}Wireless Mic Mode       {Fore.CYAN}│ {Fore.WHITE}Use phone as PC mic")
                 print(f"    {Fore.RED}[0] {Fore.WHITE}Back to Language Selection\n")
 
-            cc = get_input("  Choice [0-4]: ", ["0","1","2","3","4"])
+            cc = get_input("  Choice [0-7]: ", ["0","1","2","3","4","5","6","7"])
             if   cc == "0": break
             elif cc == "1": connect_usb(lang)
             elif cc == "2": connect_wifi(lang)
             elif cc == "3": connect_wd(lang)
             elif cc == "4": show_session_log(lang)
+            elif cc == "5": install_apk(lang)
+            elif cc == "6": push_file(lang)
+            elif cc == "7": start_wireless_mic(lang)
 
 
 if __name__ == "__main__":
