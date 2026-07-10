@@ -50,8 +50,12 @@ jobs:
       - name: 6. Build executable with PyInstaller using UPX
         shell: bash
         run: |
+          SEP=":"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then SEP=";"; fi
           pyinstaller --noconfirm --clean --onefile \
             --name ScreenMirror \
+            --icon=icon.ico \
+            --add-data="icon.ico${SEP}." \
             --upx-dir=/usr/local/bin \
             screenmirror.py
 
