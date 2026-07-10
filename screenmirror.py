@@ -987,6 +987,45 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
             no_control = get_input("  Enable No Control (View Only)? [y/n] (default: n): ", ["y","n"], "n")
 
+        # ── Picture-in-Picture (PiP) ──────────────────────
+        print()
+        if lang == "id":
+            print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
+            print(f"{Fore.CYAN}  │  [PICTURE-IN-PICTURE — Layar Mengambang]            │")
+            print(f"{Fore.CYAN}  │  Jendela HP tidak akan memiliki bingkai (borderless)│")
+            print(f"{Fore.CYAN}  │  dan SELALU BERAADA DI ATAS aplikasi lain (always   │")
+            print(f"{Fore.CYAN}  │  on top). Cocok sambil kerja/nonton.                │")
+            print(f"{Fore.CYAN}  │  ⚠ Geser jendela: Tahan tombol Alt + Klik & Tarik   │")
+            print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
+            window_pip = get_input("  Aktifkan Mode PiP? [y/n] (default: n): ", ["y","n"], "n")
+        else:
+            print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
+            print(f"{Fore.CYAN}  │  [PICTURE-IN-PICTURE — Floating Window]             │")
+            print(f"{Fore.CYAN}  │  The phone window will be borderless and ALWAYS ON  │")
+            print(f"{Fore.CYAN}  │  TOP of other applications. Great for multitasking. │")
+            print(f"{Fore.CYAN}  │  ⚠ Move window: Hold Alt key + Click & Drag         │")
+            print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
+            window_pip = get_input("  Enable PiP Mode? [y/n] (default: n): ", ["y","n"], "n")
+
+        # ── Auto-Lock on Close ────────────────────────────
+        print()
+        if lang == "id":
+            print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
+            print(f"{Fore.CYAN}  │  [AUTO-LOCK — Kunci HP Saat Keluar]                 │")
+            print(f"{Fore.CYAN}  │  Saat Anda menutup jendela scrcpy (mirroring tamat),│")
+            print(f"{Fore.CYAN}  │  program akan otomatis mematikan layar HP Anda untuk│")
+            print(f"{Fore.CYAN}  │  menjaga keamanan dan privasi.                      │")
+            print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
+            auto_lock = get_input("  Kunci HP otomatis saat ditutup? [y/n] (default: y): ", ["y","n"], "y")
+        else:
+            print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
+            print(f"{Fore.CYAN}  │  [AUTO-LOCK — Lock Phone on Close]                  │")
+            print(f"{Fore.CYAN}  │  When you close the scrcpy window, the program will │")
+            print(f"{Fore.CYAN}  │  automatically turn off the phone screen for privacy│")
+            print(f"{Fore.CYAN}  │  and security.                                      │")
+            print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
+            auto_lock = get_input("  Auto-lock phone on close? [y/n] (default: y): ", ["y","n"], "y")
+
     # ── Record Screen ─────────────────────────────────────
     print()
     if lang == "id":
@@ -1028,7 +1067,8 @@ def configure_scrcpy(lang, device_info=None):
         "advanced_kb": advanced_kb, "stay_awake": stay_awake,
         "turn_screen_off": turn_screen_off, "no_control": no_control,
         "record_filename": record_filename, "crop": crop,
-        "shortcut_mod": shortcut_mod,
+        "shortcut_mod": shortcut_mod, "window_pip": window_pip,
+        "auto_lock": auto_lock,
     }
 
     # ── Save preset? ──────────────────────────────────────
@@ -1688,13 +1728,14 @@ def launch_scrcpy(config, device_info, lang="id", max_retries=3, multi=False):
         if config.get("virtual_display") == "y": args.append("--new-display")
 
         wo = config.get("window_opt","1")
-        if wo in ["2","4"]: args.append("--always-on-top")
-        if wo in ["3","4"]: args.append("--window-borderless")
+        if wo in ["2","4"] or config.get("window_pip") == "y": args.append("--always-on-top")
+        if wo in ["3","4"] or config.get("window_pip") == "y": args.append("--window-borderless")
 
         if config.get("advanced_kb")    == "y": args.append("--keyboard=uhid")
         if config.get("stay_awake")     == "y": args.append("--stay-awake")
         if config.get("turn_screen_off")== "y": args.append("--turn-screen-off")
         if config.get("no_control")     == "y": args.append("--no-control")
+        if config.get("auto_lock")      == "y": args.append("--power-off-on-close")
 
     if config.get("record_filename"):
         args.append(f"--record={config['record_filename']}")
@@ -2029,6 +2070,57 @@ def start_wireless_mic(lang):
         try: p.terminate()
         except: pass
 
+def start_otg_mode(lang):
+    print_banner(lang)
+    devices = check_device(lang, allow_multi=True)
+    if not devices: return
+
+    is_multi = isinstance(devices, list)
+    if not is_multi: devices = [devices]
+
+    log_info("Memulai Mode OTG (Keyboard/Mouse fisik)..." if lang=="id" else "Starting OTG Mode (physical Keyboard/Mouse)...")
+    processes = []
+    for d in devices:
+        args = [SCRCPY_EXE, "-s", d["id"], "--otg"]
+        try:
+            p = subprocess.Popen(args)
+            processes.append(p)
+        except Exception as e:
+            log_err(f"Gagal / Failed: {e}")
+            
+    print(f"\n{Fore.CYAN}  Mode OTG berjalan (layar mati). Tekan Enter untuk menghentikan." if lang=="id" else f"\n{Fore.CYAN}  OTG Mode running (screen off). Press Enter to stop.")
+    input()
+    for p in processes:
+        try: p.terminate()
+        except: pass
+
+def start_spy_cam(lang):
+    print_banner(lang)
+    device = check_device(lang, allow_multi=False)
+    if not device: return
+
+    default_name = f"spycam_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
+    if lang == "id":
+        print(f"{Fore.CYAN}  Catatan: Jendela kamera tidak akan muncul. Perekaman berjalan diam-diam.")
+        record_filename = get_input(f"  Nama file (Enter untuk '{default_name}'): ", default=default_name)
+        log_info("Memulai perekaman Spy Cam...")
+    else:
+        print(f"{Fore.CYAN}  Note: Camera window will not appear. Recording runs secretly.")
+        record_filename = get_input(f"  File name (Enter for '{default_name}'): ", default=default_name)
+        log_info("Starting Spy Cam recording...")
+
+    args = [SCRCPY_EXE, "-s", device["id"], "--video-source=camera", "--camera-facing=back", "--no-window", f"--record={record_filename}"]
+    try:
+        p = subprocess.Popen(args)
+        print(f"\n{Fore.CYAN}  \U0001f534 Merekam ke {record_filename}... Tekan Enter untuk BERHENTI merekam." if lang=="id" else f"\n{Fore.CYAN}  \U0001f534 Recording to {record_filename}... Press Enter to STOP recording.")
+        input()
+        p.terminate()
+        p.wait()
+        log_ok(f"Video tersimpan di: {record_filename}" if lang=="id" else f"Video saved to: {record_filename}")
+    except Exception as e:
+        log_err(f"Gagal / Failed: {e}")
+
+
 
 # ═══════════════════════════════════════════════════════════
 #   MAIN
@@ -2088,6 +2180,8 @@ def main():
                 print(f"    {Fore.YELLOW}[5] {Fore.WHITE}Install APK (Sideload)  {Fore.CYAN}│ {Fore.WHITE}Drag & drop file APK ke HP")
                 print(f"    {Fore.YELLOW}[6] {Fore.WHITE}Kirim File (Push)       {Fore.CYAN}│ {Fore.WHITE}Transfer file ke HP")
                 print(f"    {Fore.YELLOW}[7] {Fore.WHITE}Wireless Mic Mode       {Fore.CYAN}│ {Fore.WHITE}Gunakan HP sebagai mic PC")
+                print(f"    {Fore.YELLOW}[8] {Fore.WHITE}Mode OTG                {Fore.CYAN}│ {Fore.WHITE}Keyboard/Mouse fisik tanpa layar")
+                print(f"    {Fore.YELLOW}[9] {Fore.WHITE}Mode Spy Cam            {Fore.CYAN}│ {Fore.WHITE}Perekam kamera tersembunyi")
                 print(f"    {Fore.RED}[0] {Fore.WHITE}Kembali ke Pilihan Bahasa\n")
             else:
                 print(f"  {Fore.CYAN}Main Menu:\n")
@@ -2098,9 +2192,11 @@ def main():
                 print(f"    {Fore.YELLOW}[5] {Fore.WHITE}Install APK (Sideload)  {Fore.CYAN}│ {Fore.WHITE}Drag & drop APK file to phone")
                 print(f"    {Fore.YELLOW}[6] {Fore.WHITE}Send File (Push)        {Fore.CYAN}│ {Fore.WHITE}Transfer file to phone")
                 print(f"    {Fore.YELLOW}[7] {Fore.WHITE}Wireless Mic Mode       {Fore.CYAN}│ {Fore.WHITE}Use phone as PC mic")
+                print(f"    {Fore.YELLOW}[8] {Fore.WHITE}OTG Mode                {Fore.CYAN}│ {Fore.WHITE}Physical Keyboard/Mouse without screen")
+                print(f"    {Fore.YELLOW}[9] {Fore.WHITE}Spy Cam Mode            {Fore.CYAN}│ {Fore.WHITE}Hidden camera recorder")
                 print(f"    {Fore.RED}[0] {Fore.WHITE}Back to Language Selection\n")
 
-            cc = get_input("  Choice [0-7]: ", ["0","1","2","3","4","5","6","7"])
+            cc = get_input("  Choice [0-9]: ", [str(i) for i in range(10)])
             if   cc == "0": break
             elif cc == "1": connect_usb(lang)
             elif cc == "2": connect_wifi(lang)
@@ -2109,6 +2205,8 @@ def main():
             elif cc == "5": install_apk(lang)
             elif cc == "6": push_file(lang)
             elif cc == "7": start_wireless_mic(lang)
+            elif cc == "8": start_otg_mode(lang)
+            elif cc == "9": start_spy_cam(lang)
 
 
 if __name__ == "__main__":
