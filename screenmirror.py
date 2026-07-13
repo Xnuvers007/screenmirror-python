@@ -20,7 +20,7 @@ init(autoreset=True)
 
 import platform as _platform
 
-CURRENT_VERSION = "v6.1.0"
+CURRENT_VERSION = "v6.1.2"
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def _get_preset_dir():
