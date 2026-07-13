@@ -647,7 +647,8 @@ def _delete_preset(name):
 #   CONFIGURATION
 # ═══════════════════════════════════════════════════════════
 
-def configure_scrcpy(lang, device_info=None):
+def configure_scrcpy(lang, device_info=None, existing_config=None, preset_name=None):
+    c = existing_config or {}
     rec = _smart_recommend(device_info) if device_info else {}
     sdk = device_info.get("sdk", 30) if device_info else 30
 
@@ -674,9 +675,12 @@ def configure_scrcpy(lang, device_info=None):
         print("    [3] 120 FPS — Very smooth, requires a gaming-class phone")
         print("    [4] Custom  — Enter your own FPS value")
     if rec: print(f"    {Fore.GREEN}[★] Rekomendasi/Recommended: {rec['fps']} FPS")
-    fps_c = get_input("  Choice [1-4] (default: 2): ", ["1","2","3","4"], "2")
+    fps_def = "2"
+    if existing_config:
+        fps_def = {"30":"1", "60":"2", "120":"3"}.get(c.get("fps"), "4")
+    fps_c = get_input(f"  Choice [1-4] (default: {fps_def}): ", ["1","2","3","4"], fps_def)
     fps = {"1":"30","2":"60","3":"120"}.get(fps_c)
-    if fps is None: fps = get_input("  Enter FPS: ", default="60")
+    if fps is None: fps = get_input(f"  Enter FPS (default: {c.get('fps', '60')}): ", default=c.get('fps', '60'))
     log_ok(f"FPS: {fps}")
 
     # ── Bitrate ───────────────────────────────────────────
@@ -698,9 +702,12 @@ def configure_scrcpy(lang, device_info=None):
         print("    [5] 100M — Extreme quality")
         print("    [6] Custom")
     if rec: print(f"    {Fore.GREEN}[★] Rekomendasi/Recommended: {rec['bitrate']}")
-    br_c = get_input("  Choice [1-6] (default: 2): ", ["1","2","3","4","5","6"], "2")
+    br_def = "2"
+    if existing_config:
+        br_def = {"4M":"1", "8M":"2", "16M":"3", "40M":"4", "100M":"5"}.get(c.get("bitrate"), "6")
+    br_c = get_input(f"  Choice [1-6] (default: {br_def}): ", ["1","2","3","4","5","6"], br_def)
     bitrate = {"1":"4M","2":"8M","3":"16M","4":"40M","5":"100M"}.get(br_c)
-    if bitrate is None: bitrate = get_input("  Enter bitrate (e.g. 10M, 100M): ", default="8M")
+    if bitrate is None: bitrate = get_input(f"  Enter bitrate (e.g. 10M, 100M) (default: {c.get('bitrate', '8M')}): ", default=c.get('bitrate', '8M'))
     log_ok(f"Bitrate: {bitrate}")
 
     # ── Resolution ────────────────────────────────────────
@@ -723,9 +730,12 @@ def configure_scrcpy(lang, device_info=None):
         print("    [5] 32K    — 32KFHD (Extreme max resolution)")
         print("    [6] Full   — Native phone resolution, no downscaling")
         print("    [7] Custom — Enter your own resolution")
-    res_c = get_input("  Choice [1-7] (default: 2): ", ["1","2","3","4","5","6","7"], "2")
+    res_def = "2"
+    if existing_config:
+        res_def = {"720":"1", "1080":"2", "1440":"3", "2160":"4", "32768":"5", "0":"6"}.get(c.get("resolution"), "7")
+    res_c = get_input(f"  Choice [1-7] (default: {res_def}): ", ["1","2","3","4","5","6","7"], res_def)
     resolution = {"1":"720","2":"1080","3":"1440","4":"2160","5":"32768","6":"0"}.get(res_c)
-    if resolution is None: resolution = get_input("  Enter max size (e.g. 1920): ", default="1080")
+    if resolution is None: resolution = get_input(f"  Enter max size (e.g. 1920) (default: {c.get('resolution', '1080')}): ", default=c.get('resolution', '1080'))
     log_ok(f"Resolution: {'Full/Native' if resolution=='0' else resolution + ('p' if res_c in ['1','2','3'] else '')}")
 
     # ── Codec ─────────────────────────────────────────────
@@ -741,7 +751,10 @@ def configure_scrcpy(lang, device_info=None):
         print("    [2] H.265 — More efficient & saves bandwidth (requires Android 10+ / SDK 29+)")
         print("    [3] AV1   — Best quality, experimental (requires Android 14+ / SDK 34+)")
     if rec: print(f"    {Fore.GREEN}[★] Rekomendasi/Recommended: {rec['codec'].upper()}")
-    codec_c = get_input("  Choice [1-3] (default: 1): ", ["1","2","3"], "1")
+    codec_def = "1"
+    if existing_config:
+        codec_def = {"h264":"1", "h265":"2", "av1":"3"}.get(c.get("codec"), "1")
+    codec_c = get_input(f"  Choice [1-3] (default: {codec_def}): ", ["1","2","3"], codec_def)
     codec = "h264"
     if codec_c == "2":
         if sdk < 29: log_warn("H.265 butuh Android 10+. Menggunakan H.264." if lang=="id" else "H.265 requires Android 10+. Falling back to H.264.")
@@ -768,7 +781,8 @@ def configure_scrcpy(lang, device_info=None):
         print(f"{Fore.CYAN}  │  ⚠ JIKA 'y': Layar HP TIDAK akan ditampilkan.      │")
         print(f"{Fore.CYAN}  │  ✔ JIKA 'n': Layar HP ditampilkan seperti biasa.   │")
         print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-        mirror_cam = get_input("  Aktifkan Kamera sebagai Webcam? [y/n] (default: n): ", ["y","n"], "n")
+        mc_def = c.get("mirror_cam", "n")
+        mirror_cam = get_input(f"  Aktifkan Kamera sebagai Webcam? [y/n] (default: {mc_def}): ", ["y","n"], mc_def)
     else:
         print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
         print(f"{Fore.CYAN}  │  [CAMERA AS WEBCAM]                                  │")
@@ -778,15 +792,17 @@ def configure_scrcpy(lang, device_info=None):
         print(f"{Fore.CYAN}  │  ⚠ IF 'y': Phone screen will NOT be mirrored.      │")
         print(f"{Fore.CYAN}  │  ✔ IF 'n': Phone screen is shown normally.         │")
         print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-        mirror_cam = get_input("  Enable Camera as Webcam? [y/n] (default: n): ", ["y","n"], "n")
+        mc_def = c.get("mirror_cam", "n")
+        mirror_cam = get_input(f"  Enable Camera as Webcam? [y/n] (default: {mc_def}): ", ["y","n"], mc_def)
 
     camera_facing = ""
     if mirror_cam == "y":
         print(f"  {Fore.YELLOW}  [front]    = Kamera depan / Front camera (selfie)")
         print(f"  {Fore.YELLOW}  [back]     = Kamera belakang / Rear camera (main)")
         print(f"  {Fore.YELLOW}  [external] = Kamera eksternal / External camera (USB/OTG)")
-        camera_facing = get_input("  Pilih lensa [front/back/external] (default: back): " if lang=="id" else "  Choose lens [front/back/external] (default: back): ",
-                                  ["front","back","external"], "back")
+        cf_def = c.get("camera_facing", "back")
+        camera_facing = get_input(f"  Pilih lensa [front/back/external] (default: {cf_def}): " if lang=="id" else f"  Choose lens [front/back/external] (default: {cf_def}): ",
+                                  ["front","back","external"], cf_def)
 
     # ── OTG Mode ──────────────────────────────────────────
     print()
@@ -806,7 +822,8 @@ def configure_scrcpy(lang, device_info=None):
         print(f"{Fore.CYAN}  │    laptop — gunakan mode Normal/biasa saja.          │")
         print(f"{Fore.CYAN}  │  ⚠ WAJIB pakai kabel USB. WiFi TIDAK didukung.     │")
         print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-        enable_otg = get_input("  Aktifkan Mode OTG? [y/n] (default: n): ", ["y","n"], "n")
+        otg_def = c.get("enable_otg", "n")
+        enable_otg = get_input(f"  Aktifkan Mode OTG? [y/n] (default: {otg_def}): ", ["y","n"], otg_def)
     else:
         print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
         print(f"{Fore.CYAN}  │  [OTG MODE — Control Only, NO Screen Display]       │")
@@ -823,7 +840,8 @@ def configure_scrcpy(lang, device_info=None):
         print(f"{Fore.CYAN}  │    on laptop — use Normal mode instead.              │")
         print(f"{Fore.CYAN}  │  ⚠ REQUIRES USB cable. WiFi is NOT supported.      │")
         print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-        enable_otg = get_input("  Enable OTG Mode? [y/n] (default: n): ", ["y","n"], "n")
+        otg_def = c.get("enable_otg", "n")
+        enable_otg = get_input(f"  Enable OTG Mode? [y/n] (default: {otg_def}): ", ["y","n"], otg_def)
 
     virtual_display = "n"; window_opt = "1"; audio_mode = "1"
     advanced_kb = "n"; stay_awake = "y"; turn_screen_off = "n"
@@ -842,7 +860,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Cocok untuk: Multitasking, privasi, developer   │")
             print(f"{Fore.CYAN}  │  ⚠ Fitur eksperimental, tidak semua HP mendukung   │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            virtual_display = get_input("  Aktifkan Virtual Display? [y/n] (default: n): ", ["y","n"], "n")
+            vd_def = c.get("virtual_display", "n")
+            virtual_display = get_input(f"  Aktifkan Virtual Display? [y/n] (default: {vd_def}): ", ["y","n"], vd_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [VIRTUAL DISPLAY — New Virtual Screen on Phone]    │")
@@ -852,7 +871,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Great for: Multitasking, privacy, developers    │")
             print(f"{Fore.CYAN}  │  ⚠ Experimental — not all phones support this      │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            virtual_display = get_input("  Enable Virtual Display? [y/n] (default: n): ", ["y","n"], "n")
+            vd_def = c.get("virtual_display", "n")
+            virtual_display = get_input(f"  Enable Virtual Display? [y/n] (default: {vd_def}): ", ["y","n"], vd_def)
 
         # ── Crop Display ──────────────────────────────────
         print()
@@ -865,7 +885,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Cocok untuk: Streamer, demo fitur tertentu saja  │")
             print(f"{Fore.CYAN}  │  ↵ Kosongkan (Enter) untuk mirror layar penuh      │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            crop = get_input("  Masukkan area crop (Enter = skip): ", default="")
+            crp_def = c.get("crop", "")
+            crop = get_input(f"  Masukkan area crop (Enter = skip, default: {crp_def if crp_def else 'skip'}): ", default=crp_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [CROP DISPLAY — Mirror a Part of the Screen]       │")
@@ -875,7 +896,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Great for: Streamers, specific feature demos     │")
             print(f"{Fore.CYAN}  │  ↵ Leave empty (Enter) to mirror the full screen   │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            crop = get_input("  Enter crop area (Enter = skip): ", default="")
+            crp_def = c.get("crop", "")
+            crop = get_input(f"  Enter crop area (Enter = skip, default: {crp_def if crp_def else 'skip'}): ", default=crp_def)
 
         # ── Window Options ────────────────────────────────
         print()
@@ -888,7 +910,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  [4] Top+Borderless — Kombinasi keduanya            │")
             print(f"{Fore.CYAN}  │  [5] Fullscreen   — Layar Penuh memenuhi monitor    │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            window_opt = get_input("  Pilihan Anda [1-5] (default: 1): ", ["1","2","3","4","5"], "1")
+            wo_def = c.get("window_opt", "1")
+            window_opt = get_input(f"  Pilihan Anda [1-5] (default: {wo_def}): ", ["1","2","3","4","5"], wo_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [MIRROR WINDOW DISPLAY MODE]                       │")
@@ -898,14 +921,18 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  [4] Top+Borderless — Always on top AND borderless  │")
             print(f"{Fore.CYAN}  │  [5] Fullscreen   — Fills the entire monitor        │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            window_opt = get_input("  Your choice [1-5] (default: 1): ", ["1","2","3","4","5"], "1")
+            wo_def = c.get("window_opt", "1")
+            window_opt = get_input(f"  Your choice [1-5] (default: {wo_def}): ", ["1","2","3","4","5"], wo_def)
 
         if window_opt != "5":
             print()
-            set_pos = get_input("  Atur posisi jendela awal (X/Y)? [y/n] (default: n): " if lang=="id" else "  Set initial window position (X/Y)? [y/n] (default: n): ", ["y","n"], "n")
+            wx_def = c.get("win_x", "")
+            wy_def = c.get("win_y", "")
+            sp_def = "y" if (wx_def or wy_def) else "n"
+            set_pos = get_input(f"  Atur posisi jendela awal (X/Y)? [y/n] (default: {sp_def}): " if lang=="id" else f"  Set initial window position (X/Y)? [y/n] (default: {sp_def}): ", ["y","n"], sp_def)
             if set_pos == "y":
-                win_x = get_input("  X (contoh/e.g. 100): ", default="100")
-                win_y = get_input("  Y (contoh/e.g. 100): ", default="100")
+                win_x = get_input(f"  X (contoh/e.g. 100, default: {wx_def if wx_def else '100'}): ", default=wx_def if wx_def else "100")
+                win_y = get_input(f"  Y (contoh/e.g. 100, default: {wy_def if wy_def else '100'}): ", default=wy_def if wy_def else "100")
 
         # ── Audio ─────────────────────────────────────────
         print()
@@ -919,7 +946,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  [4] Mikrofon HP → Laptop — HP jadi mic laptop      │")
             print(f"{Fore.CYAN}  │      (berguna untuk meeting/rekaman di laptop)       │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            audio_mode = get_input("  Pilihan Anda [1-4] (default: 1): ", ["1","2","3","4"], "1")
+            am_def = c.get("audio_mode", "1")
+            audio_mode = get_input(f"  Pilihan Anda [1-4] (default: {am_def}): ", ["1","2","3","4"], am_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [AUDIO SETTINGS]  Requires: Android 11+ (SDK 30+) │")
@@ -930,7 +958,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  [4] Phone Mic → Laptop — use phone as microphone   │")
             print(f"{Fore.CYAN}  │      (great for meetings or recordings on laptop)   │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            audio_mode = get_input("  Your choice [1-4] (default: 1): ", ["1","2","3","4"], "1")
+            am_def = c.get("audio_mode", "1")
+            audio_mode = get_input(f"  Your choice [1-4] (default: {am_def}): ", ["1","2","3","4"], am_def)
 
         # ── UHID Keyboard ─────────────────────────────────
         print()
@@ -944,7 +973,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Aktifkan jika: Sering mengetik atau main game    │")
             print(f"{Fore.CYAN}  │    yang butuh input keyboard yang presisi & cepat.  │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            advanced_kb = get_input("  Aktifkan UHID Keyboard? [y/n] (default: n): ", ["y","n"], "n")
+            ak_def = c.get("advanced_kb", "n")
+            advanced_kb = get_input(f"  Aktifkan UHID Keyboard? [y/n] (default: {ak_def}): ", ["y","n"], ak_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [UHID KEYBOARD — Physical Keyboard Mode]           │")
@@ -955,7 +985,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Enable if: You type often or play games that     │")
             print(f"{Fore.CYAN}  │    require precise & fast keyboard input.           │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            advanced_kb = get_input("  Enable UHID Keyboard? [y/n] (default: n): ", ["y","n"], "n")
+            ak_def = c.get("advanced_kb", "n")
+            advanced_kb = get_input(f"  Enable UHID Keyboard? [y/n] (default: {ak_def}): ", ["y","n"], ak_def)
 
         # ── Gamepad Mapping ───────────────────────────────
         print()
@@ -966,7 +997,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  dicolok ke laptop langsung ke HP secara native.    │")
             print(f"{Fore.CYAN}  │  ✔ Cocok untuk: Main game Android dengan Joystick   │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            gamepad = get_input("  Aktifkan Gamepad Mapping? [y/n] (default: n): ", ["y","n"], "n")
+            gp_def = c.get("gamepad", "n")
+            gamepad = get_input(f"  Aktifkan Gamepad Mapping? [y/n] (default: {gp_def}): ", ["y","n"], gp_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [GAMEPAD MAPPING — UHID]                           │")
@@ -974,7 +1006,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  connected to laptop directly to phone natively.    │")
             print(f"{Fore.CYAN}  │  ✔ Great for: Playing Android games with a Joystick │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            gamepad = get_input("  Enable Gamepad Mapping? [y/n] (default: n): ", ["y","n"], "n")
+            gp_def = c.get("gamepad", "n")
+            gamepad = get_input(f"  Enable Gamepad Mapping? [y/n] (default: {gp_def}): ", ["y","n"], gp_def)
 
         # ── Screenshot Shortcut ───────────────────────────
         print()
@@ -987,7 +1020,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  screenshot_YYYYMMDD_HHMMSS.png                     │")
             print(f"{Fore.CYAN}  │  ✔ Cocok untuk: Ambil bukti, dokumentasi, debug    │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            shortcut_mod = get_input("  Aktifkan Screenshot Shortcut? [y/n] (default: n): ", ["y","n"], "n")
+            sm_def = c.get("shortcut_mod", "n")
+            shortcut_mod = get_input(f"  Aktifkan Screenshot Shortcut? [y/n] (default: {sm_def}): ", ["y","n"], sm_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [SCREENSHOT SHORTCUT — Press 'S' in Terminal]      │")
@@ -997,7 +1031,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  screenshot_YYYYMMDD_HHMMSS.png                     │")
             print(f"{Fore.CYAN}  │  ✔ Great for: Capturing evidence, docs, debugging   │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            shortcut_mod = get_input("  Enable Screenshot Shortcut? [y/n] (default: n): ", ["y","n"], "n")
+            sm_def = c.get("shortcut_mod", "n")
+            shortcut_mod = get_input(f"  Enable Screenshot Shortcut? [y/n] (default: {sm_def}): ", ["y","n"], sm_def)
 
         # ── Stay Awake ────────────────────────────────────
         print()
@@ -1011,7 +1046,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Aktifkan agar sesi mirroring tidak terputus tiba │")
             print(f"{Fore.CYAN}  │    tiba karena layar HP mati/terkunci.              │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            stay_awake = get_input("  Aktifkan Stay Awake? [y/n] (default: y): ", ["y","n"], "y")
+            sa_def = c.get("stay_awake", "y")
+            stay_awake = get_input(f"  Aktifkan Stay Awake? [y/n] (default: {sa_def}): ", ["y","n"], sa_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [STAY AWAKE — Keep Phone Screen On]                │")
@@ -1023,7 +1059,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Enable to prevent mirroring from being suddenly  │")
             print(f"{Fore.CYAN}  │    interrupted due to the phone screen locking.     │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            stay_awake = get_input("  Enable Stay Awake? [y/n] (default: y): ", ["y","n"], "y")
+            sa_def = c.get("stay_awake", "y")
+            stay_awake = get_input(f"  Enable Stay Awake? [y/n] (default: {sa_def}): ", ["y","n"], sa_def)
 
         # ── Turn Screen Off ───────────────────────────────
         print()
@@ -1037,7 +1074,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ⚠ Gabungkan dengan Stay Awake: HP tidak terkunci  │")
             print(f"{Fore.CYAN}  │    meski layar mati (tetap bisa dikontrol laptop).  │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            turn_screen_off = get_input("  Matikan layar HP saat mirroring? [y/n] (default: n): ", ["y","n"], "n")
+            tso_def = c.get("turn_screen_off", "n")
+            turn_screen_off = get_input(f"  Matikan layar HP saat mirroring? [y/n] (default: {tso_def}): ", ["y","n"], tso_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [TURN SCREEN OFF — Save Battery]                   │")
@@ -1048,7 +1086,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ⚠ Combine with Stay Awake: phone won't lock even   │")
             print(f"{Fore.CYAN}  │    with screen off (still controllable from laptop). │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            turn_screen_off = get_input("  Turn off phone screen? [y/n] (default: n): ", ["y","n"], "n")
+            tso_def = c.get("turn_screen_off", "n")
+            turn_screen_off = get_input(f"  Turn off phone screen? [y/n] (default: {tso_def}): ", ["y","n"], tso_def)
 
         # ── No Control ────────────────────────────────────
         print()
@@ -1063,7 +1102,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Gunakan untuk: Streaming/demo yang tidak ingin   │")
             print(f"{Fore.CYAN}  │    HP-nya tersentuh secara tidak sengaja.            │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            no_control = get_input("  Aktifkan No Control (View Only)? [y/n] (default: n): ", ["y","n"], "n")
+            nc_def = c.get("no_control", "n")
+            no_control = get_input(f"  Aktifkan No Control (View Only)? [y/n] (default: {nc_def}): ", ["y","n"], nc_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [NO CONTROL — View Only Mode]                      │")
@@ -1075,7 +1115,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  ✔ Use for: Streaming or demos where you don't want │")
             print(f"{Fore.CYAN}  │    the phone to be accidentally interacted with.    │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            no_control = get_input("  Enable No Control (View Only)? [y/n] (default: n): ", ["y","n"], "n")
+            nc_def = c.get("no_control", "n")
+            no_control = get_input(f"  Enable No Control (View Only)? [y/n] (default: {nc_def}): ", ["y","n"], nc_def)
 
         # ── Picture-in-Picture (PiP) ──────────────────────
         print()
@@ -1087,7 +1128,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  on top). Cocok sambil kerja/nonton.                │")
             print(f"{Fore.CYAN}  │  ⚠ Geser jendela: Tahan tombol Alt + Klik & Tarik   │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            window_pip = get_input("  Aktifkan Mode PiP? [y/n] (default: n): ", ["y","n"], "n")
+            pip_def = c.get("window_pip", "n")
+            window_pip = get_input(f"  Aktifkan Mode PiP? [y/n] (default: {pip_def}): ", ["y","n"], pip_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [PICTURE-IN-PICTURE — Floating Window]             │")
@@ -1095,7 +1137,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  TOP of other applications. Great for multitasking. │")
             print(f"{Fore.CYAN}  │  ⚠ Move window: Hold Alt key + Click & Drag         │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            window_pip = get_input("  Enable PiP Mode? [y/n] (default: n): ", ["y","n"], "n")
+            pip_def = c.get("window_pip", "n")
+            window_pip = get_input(f"  Enable PiP Mode? [y/n] (default: {pip_def}): ", ["y","n"], pip_def)
 
         # ── Auto-Lock on Close ────────────────────────────
         print()
@@ -1106,7 +1149,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  program akan otomatis mematikan layar HP Anda untuk│")
             print(f"{Fore.CYAN}  │  menjaga keamanan dan privasi.                      │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            auto_lock = get_input("  Kunci HP otomatis saat ditutup? [y/n] (default: y): ", ["y","n"], "y")
+            al_def = c.get("auto_lock", "y")
+            auto_lock = get_input(f"  Kunci HP otomatis saat ditutup? [y/n] (default: {al_def}): ", ["y","n"], al_def)
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [AUTO-LOCK — Lock Phone on Close]                  │")
@@ -1114,7 +1158,8 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  automatically turn off the phone screen for privacy│")
             print(f"{Fore.CYAN}  │  and security.                                      │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            auto_lock = get_input("  Auto-lock phone on close? [y/n] (default: y): ", ["y","n"], "y")
+            al_def = c.get("auto_lock", "y")
+            auto_lock = get_input(f"  Auto-lock phone on close? [y/n] (default: {al_def}): ", ["y","n"], al_def)
 
     # ── Record Screen ─────────────────────────────────────
     print()
@@ -1127,7 +1172,8 @@ def configure_scrcpy(lang, device_info=None):
         print(f"{Fore.CYAN}  │  ⚠ Ukuran file bisa besar tergantung durasi &      │")
         print(f"{Fore.CYAN}  │    resolusi yang dipilih. Pastikan ada ruang disk.  │")
         print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-        record_screen = get_input("  Aktifkan Rekam Layar? [y/n] (default: n): ", ["y","n"], "n")
+        rs_def = "y" if c.get("record_filename") else "n"
+        record_screen = get_input(f"  Aktifkan Rekam Layar? [y/n] (default: {rs_def}): ", ["y","n"], rs_def)
     else:
         print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
         print(f"{Fore.CYAN}  │  [SCREEN RECORD]                                    │")
@@ -1137,11 +1183,16 @@ def configure_scrcpy(lang, device_info=None):
         print(f"{Fore.CYAN}  │  ⚠ File size can be large depending on duration    │")
         print(f"{Fore.CYAN}  │    and resolution. Ensure you have enough disk space.│")
         print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-        record_screen = get_input("  Enable Screen Record? [y/n] (default: n): ", ["y","n"], "n")
+        rs_def = "y" if c.get("record_filename") else "n"
+        record_screen = get_input(f"  Enable Screen Record? [y/n] (default: {rs_def}): ", ["y","n"], rs_def)
 
     record_filename = ""
     if record_screen == "y":
-        default_name = f"screenmirror_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
+        default_name = c.get("record_filename", "")
+        if not default_name or default_name == "__auto__":
+            default_name = c.get("record_filename", "")
+        if not default_name or default_name == "__auto__":
+            default_name = f"screenmirror_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
         if lang == "id":
             record_filename = get_input(f"  Nama file (Enter untuk '{default_name}'): ", default=default_name)
             log_ok(f"Merekam ke: {record_filename}")
@@ -1173,7 +1224,8 @@ def configure_scrcpy(lang, device_info=None):
         print(f"{Fore.CYAN}  │  (%APPDATA% adalah folder bawaan Windows untuk data aplikasi│")
         print(f"{Fore.CYAN}  │  sehingga data tidak hilang meski file script dipindahkan). │")
         print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────────────┘")
-        prompt = "  Simpan sebagai preset? [y/n] (default: n): "
+        sp_def = "y" if existing_config else "n"
+        prompt = f"  Simpan sebagai preset? [y/n] (default: {sp_def}): "
     else:
         print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────────────┐")
         print(f"{Fore.CYAN}  │  [SAVE PRESET]                                              │")
@@ -1183,10 +1235,12 @@ def configure_scrcpy(lang, device_info=None):
         print(f"{Fore.CYAN}  │  (%APPDATA% is a built-in Windows folder for app data, so   │")
         print(f"{Fore.CYAN}  │  your presets won't be lost if you move the script file).   │")
         print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────────────┘")
-        prompt = "  Save as preset? [y/n] (default: n): "
+        sp_def = "y" if existing_config else "n"
+        prompt = f"  Save as preset? [y/n] (default: {sp_def}): "
 
-    if get_input(prompt, ["y","n"], "n") == "y":
-        pname = get_input("  Nama preset: " if lang == "id" else "  Preset name: ", default="My Preset")
+    if get_input(prompt, ["y","n"], sp_def) == "y":
+        pn_def = preset_name if preset_name else "My Preset"
+        pname = get_input(f"  Nama preset (default: {pn_def}): " if lang == "id" else f"  Preset name (default: {pn_def}): ", default=pn_def)
         if _save_preset(pname, config):
             log_ok(f"Preset '{pname}' disimpan!" if lang == "id" else f"Preset '{pname}' saved!")
         else:
@@ -1216,11 +1270,23 @@ def select_or_configure(lang, device_info=None):
 
     custom_names = [n for n in names if n not in _BUILTIN_PRESETS]
     if custom_names:
+        edit_lbl = "[E] Edit Preset Custom" if lang == "id" else "[E] Edit Custom Preset"
         del_lbl = "[D] Hapus Preset Custom" if lang == "id" else "[D] Delete Custom Preset"
+        print(f"    {Fore.CYAN}{edit_lbl}")
         print(f"    {Fore.RED}{del_lbl}")
 
-    choices = [str(i) for i in range(1, nxt+1)] + (["d"] if custom_names else [])
+    choices = [str(i) for i in range(1, nxt+1)] + (["e", "d"] if custom_names else [])
     ch = get_input(f"\n  Pilihan: " if lang == "id" else f"\n  Choice: ", choices, str(nxt))
+
+    if ch == "e":
+        for i, n in enumerate(custom_names, 1):
+            print(f"    [{i}] {n}")
+        ec = get_input("  Pilih untuk diedit: " if lang == "id" else "  Select to edit: ",
+                       [str(i) for i in range(1, len(custom_names)+1)], "1")
+        ename = custom_names[int(ec)-1]
+        log_info(f"Mengedit preset '{ename}'..." if lang == "id" else f"Editing preset '{ename}'...")
+        sel = dict(presets[ename])
+        return configure_scrcpy(lang, device_info, existing_config=sel, preset_name=ename)
 
     if ch == "d":
         for i, n in enumerate(custom_names, 1):
