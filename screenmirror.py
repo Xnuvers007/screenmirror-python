@@ -405,6 +405,37 @@ def _adb_getprop(device_id, prop):
         return ""
 
 
+def _get_resolution(device_id):
+    try:
+        r = subprocess.run([ADB_EXE, "-s", device_id, "shell", "wm", "size"], capture_output=True, text=True, timeout=5)
+        if "Physical size:" in r.stdout:
+            return r.stdout.split(":")[1].strip()
+    except Exception:
+        pass
+    return "?"
+
+def _get_ram(device_id):
+    try:
+        r = subprocess.run([ADB_EXE, "-s", device_id, "shell", "cat", "/proc/meminfo"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            if "MemTotal:" in line:
+                kb = int(line.split()[1])
+                gb = round(kb / (1024*1024), 2)
+                return f"{gb} GB"
+    except Exception:
+        pass
+    return "?"
+
+def _get_ip(device_id):
+    try:
+        r = subprocess.run([ADB_EXE, "-s", device_id, "shell", "ip", "route"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            if "src" in line and "wlan" in line:
+                return line.split("src")[1].split()[0].strip()
+    except Exception:
+        pass
+    return "-"
+
 def _get_device_info(device_id):
     sdk_str  = _adb_getprop(device_id, "ro.build.version.sdk")
     sdk_ver  = int(sdk_str) if sdk_str.isdigit() else 30
@@ -414,23 +445,33 @@ def _get_device_info(device_id):
         "android":     _adb_getprop(device_id, "ro.build.version.release"),
         "brand":       _adb_getprop(device_id, "ro.product.brand"),
         "model":       _adb_getprop(device_id, "ro.product.model"),
+        "device":      _adb_getprop(device_id, "ro.product.device"),
         "manufacturer":_adb_getprop(device_id, "ro.product.manufacturer"),
-        "platform":    _adb_getprop(device_id, "ro.board.platform"),
+        "platform":    _adb_getprop(device_id, "ro.board.platform") or _adb_getprop(device_id, "ro.hardware"),
         "cpu_abi":     _adb_getprop(device_id, "ro.product.cpu.abi"),
         "battery":     _get_battery(device_id),
+        "resolution":  _get_resolution(device_id),
+        "ram":         _get_ram(device_id),
+        "ip":          _get_ip(device_id),
     }
 
 
 def _get_battery(device_id):
+    level = "?"
+    temp = "?"
     try:
         r = subprocess.run([ADB_EXE, "-s", device_id, "shell", "dumpsys", "battery"],
                            capture_output=True, text=True, timeout=5)
         for line in r.stdout.splitlines():
             if "level:" in line:
-                return line.split(":")[-1].strip() + "%"
+                level = line.split(":")[-1].strip() + "%"
+            elif "temperature:" in line:
+                t = int(line.split(":")[-1].strip())
+                temp = f"{t/10.0}°C"
     except Exception:
         pass
-    return "?"
+    if temp != "?": return f"{level} ({temp})"
+    return level
 
 
 def _print_device_info(d, lang="en"):
@@ -438,16 +479,20 @@ def _print_device_info(d, lang="en"):
     print(f"{Fore.CYAN}  ║  {'INFORMASI PERANGKAT' if lang=='id' else 'DEVICE INFORMATION':<56}║")
     print(f"{Fore.CYAN}  ╠══════════════════════════════════════════════════════════╣")
     def _pr(lbl, val):
-        val_str = str(val)
+        val_str = str(val)[:36]
         vis_len = 21 + len(val_str)
         pad = " " * max(0, 58 - vis_len)
         print(f"{Fore.CYAN}  ║  {Fore.WHITE}{lbl:<14}{Fore.CYAN}│ {Fore.GREEN}{val_str}{pad}{Fore.CYAN}║")
 
-    _pr("Brand", f"{d.get('brand','?')} {d.get('model','')}")
-    _pr("Android", f"{d.get('android','?')} (SDK {d.get('sdk','?')})")
-    _pr("Platform", d.get('platform','?'))
-    _pr("CPU ABI", d.get('cpu_abi','?'))
-    _pr("Baterai" if lang=="id" else "Battery", d.get('battery','?'))
+    _pr("Model/Brand", f"{d.get('brand','?').capitalize()} {d.get('model','')}")
+    _pr("Codename", d.get('device','?'))
+    _pr("OS Version", f"Android {d.get('android','?')} (SDK {d.get('sdk','?')})")
+    _pr("Chipset", d.get('platform','?').upper())
+    _pr("CPU Arch", d.get('cpu_abi','?'))
+    _pr("Screen Res", d.get('resolution','?'))
+    _pr("RAM Total", d.get('ram','?'))
+    _pr("Battery", d.get('battery','?'))
+    _pr("IP Address", d.get('ip','?'))
     _pr("Device ID", d.get('id','?'))
     print(f"{Fore.CYAN}  ╚══════════════════════════════════════════════════════════╝\n")
 
@@ -569,6 +614,15 @@ def _save_preset(name, config):
             with open(PRESET_FILE, "r", encoding="utf-8") as f:
                 custom = json.load(f)
         custom[name] = config
+        with open(PRESET_FILE, "w", encoding="utf-8") as f:
+            json.dump(custom, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception:
+        return False
+
+def _save_presets(all_presets):
+    try:
+        custom = {k: v for k, v in all_presets.items() if k not in _BUILTIN_PRESETS}
         with open(PRESET_FILE, "w", encoding="utf-8") as f:
             json.dump(custom, f, indent=2, ensure_ascii=False)
         return True
@@ -774,6 +828,7 @@ def configure_scrcpy(lang, device_info=None):
     virtual_display = "n"; window_opt = "1"; audio_mode = "1"
     advanced_kb = "n"; stay_awake = "y"; turn_screen_off = "n"
     no_control = "n"; crop = ""; shortcut_mod = "n"
+    win_x = ""; win_y = ""; gamepad = "n"
 
     if enable_otg != "y":
         # ── Virtual Display ───────────────────────────────
@@ -831,8 +886,9 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  [2] Always Top   — Jendela SELALU di depan app lain│")
             print(f"{Fore.CYAN}  │  [3] Borderless   — Tanpa bingkai (tampilan bersih) │")
             print(f"{Fore.CYAN}  │  [4] Top+Borderless — Kombinasi keduanya            │")
+            print(f"{Fore.CYAN}  │  [5] Fullscreen   — Layar Penuh memenuhi monitor    │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            window_opt = get_input("  Pilihan Anda [1-4] (default: 1): ", ["1","2","3","4"], "1")
+            window_opt = get_input("  Pilihan Anda [1-5] (default: 1): ", ["1","2","3","4","5"], "1")
         else:
             print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
             print(f"{Fore.CYAN}  │  [MIRROR WINDOW DISPLAY MODE]                       │")
@@ -840,8 +896,16 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │  [2] Always Top   — Window ALWAYS above other apps  │")
             print(f"{Fore.CYAN}  │  [3] Borderless   — No frame/border (cleaner look)  │")
             print(f"{Fore.CYAN}  │  [4] Top+Borderless — Always on top AND borderless  │")
+            print(f"{Fore.CYAN}  │  [5] Fullscreen   — Fills the entire monitor        │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
-            window_opt = get_input("  Your choice [1-4] (default: 1): ", ["1","2","3","4"], "1")
+            window_opt = get_input("  Your choice [1-5] (default: 1): ", ["1","2","3","4","5"], "1")
+
+        if window_opt != "5":
+            print()
+            set_pos = get_input("  Atur posisi jendela awal (X/Y)? [y/n] (default: n): " if lang=="id" else "  Set initial window position (X/Y)? [y/n] (default: n): ", ["y","n"], "n")
+            if set_pos == "y":
+                win_x = get_input("  X (contoh/e.g. 100): ", default="100")
+                win_y = get_input("  Y (contoh/e.g. 100): ", default="100")
 
         # ── Audio ─────────────────────────────────────────
         print()
@@ -892,6 +956,25 @@ def configure_scrcpy(lang, device_info=None):
             print(f"{Fore.CYAN}  │    require precise & fast keyboard input.           │")
             print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
             advanced_kb = get_input("  Enable UHID Keyboard? [y/n] (default: n): ", ["y","n"], "n")
+
+        # ── Gamepad Mapping ───────────────────────────────
+        print()
+        if lang == "id":
+            print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
+            print(f"{Fore.CYAN}  │  [GAMEPAD MAPPING — UHID]                           │")
+            print(f"{Fore.CYAN}  │  Teruskan input dari Gamepad/Controller fisik yang  │")
+            print(f"{Fore.CYAN}  │  dicolok ke laptop langsung ke HP secara native.    │")
+            print(f"{Fore.CYAN}  │  ✔ Cocok untuk: Main game Android dengan Joystick   │")
+            print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
+            gamepad = get_input("  Aktifkan Gamepad Mapping? [y/n] (default: n): ", ["y","n"], "n")
+        else:
+            print(f"{Fore.CYAN}  ┌─────────────────────────────────────────────────────┐")
+            print(f"{Fore.CYAN}  │  [GAMEPAD MAPPING — UHID]                           │")
+            print(f"{Fore.CYAN}  │  Forward input from physical Gamepad/Controller     │")
+            print(f"{Fore.CYAN}  │  connected to laptop directly to phone natively.    │")
+            print(f"{Fore.CYAN}  │  ✔ Great for: Playing Android games with a Joystick │")
+            print(f"{Fore.CYAN}  └─────────────────────────────────────────────────────┘")
+            gamepad = get_input("  Enable Gamepad Mapping? [y/n] (default: n): ", ["y","n"], "n")
 
         # ── Screenshot Shortcut ───────────────────────────
         print()
@@ -1070,7 +1153,8 @@ def configure_scrcpy(lang, device_info=None):
         "fps": fps, "bitrate": bitrate, "resolution": resolution, "codec": codec,
         "mirror_cam": mirror_cam, "camera_facing": camera_facing,
         "enable_otg": enable_otg, "virtual_display": virtual_display,
-        "window_opt": window_opt, "audio_mode": audio_mode,
+        "window_opt": window_opt, "win_x": win_x, "win_y": win_y, "gamepad": gamepad,
+        "audio_mode": audio_mode,
         "advanced_kb": advanced_kb, "stay_awake": stay_awake,
         "turn_screen_off": turn_screen_off, "no_control": no_control,
         "record_filename": record_filename, "crop": crop,
@@ -1737,12 +1821,20 @@ def launch_scrcpy(config, device_info, lang="id", max_retries=3, multi=False):
         wo = config.get("window_opt","1")
         if wo in ["2","4"] or config.get("window_pip") == "y": args.append("--always-on-top")
         if wo in ["3","4"] or config.get("window_pip") == "y": args.append("--window-borderless")
+        if wo == "5": args.append("--fullscreen")
+
+        win_x = config.get("win_x", "")
+        win_y = config.get("win_y", "")
+        if win_x and win_x.lstrip("-").isdigit(): args.append(f"--window-x={win_x}")
+        if win_y and win_y.lstrip("-").isdigit(): args.append(f"--window-y={win_y}")
 
         if config.get("advanced_kb")    == "y": args.append("--keyboard=uhid")
         if config.get("stay_awake")     == "y": args.append("--stay-awake")
         if config.get("turn_screen_off")== "y": args.append("--turn-screen-off")
         if config.get("no_control")     == "y": args.append("--no-control")
         if config.get("auto_lock")      == "y": args.append("--power-off-on-close")
+
+    if config.get("gamepad") == "y": args.append("--gamepad=uhid")
 
     if config.get("record_filename"):
         args.append(f"--record={config['record_filename']}")
@@ -1900,6 +1992,36 @@ def _scan_mdns(service_type, lang="en"):
         return devices
     except Exception:
         return []
+
+def auto_connect_wifi(lang):
+    print_banner(lang)
+    presets = _load_presets()
+    last_ip = presets.get("last_wifi_ip")
+    last_port = presets.get("last_wifi_port", "5555")
+
+    if not last_ip:
+        log_err("Belum ada riwayat koneksi WiFi." if lang=="id" else "No WiFi connection history found.")
+        input("  Enter...")
+        return
+
+    log_info(f"Mencoba koneksi otomatis ke {last_ip}:{last_port}..." if lang=="id" else f"Auto-connecting to {last_ip}:{last_port}...")
+    res = subprocess.run([ADB_EXE, "connect", f"{last_ip}:{last_port}"], capture_output=True, text=True)
+    if "connected to" in res.stdout.lower() or "already connected" in res.stdout.lower():
+        log_ok("Berhasil terhubung!" if lang=="id" else "Connected successfully!")
+    else:
+        log_err(f"Gagal: {res.stdout.strip()}")
+        input("  Enter...")
+        return
+        
+    # Check device to populate device info
+    device_info = check_device(lang, allow_multi=False)
+    if not device_info: return
+    
+    conf = select_or_configure(lang, device_info)
+    if show_config_summary(conf, device_info, lang) != "y": return
+    conf.update({"mode":"wifi","ip":last_ip,"port":last_port})
+    launch_scrcpy(conf, device_info)
+
 
 def connect_wifi(lang):
     print_banner(lang)
@@ -2182,38 +2304,41 @@ def main():
                 print(f"  {Fore.CYAN}Menu Utama:\n")
                 print(f"    {Fore.YELLOW}[1] {Fore.WHITE}Koneksi USB             {Fore.CYAN}│ {Fore.WHITE}Mirror via kabel USB")
                 print(f"    {Fore.YELLOW}[2] {Fore.WHITE}Koneksi WiFi            {Fore.CYAN}│ {Fore.WHITE}Mirror via jaringan WiFi")
-                print(f"    {Fore.YELLOW}[3] {Fore.WHITE}Wireless Debugging      {Fore.CYAN}│ {Fore.WHITE}Mirror via Android 11+ Wireless Debug")
-                print(f"    {Fore.YELLOW}[4] {Fore.WHITE}Riwayat Sesi            {Fore.CYAN}│ {Fore.WHITE}Lihat log sesi mirroring sebelumnya")
-                print(f"    {Fore.YELLOW}[5] {Fore.WHITE}Install APK (Sideload)  {Fore.CYAN}│ {Fore.WHITE}Drag & drop file APK ke HP")
-                print(f"    {Fore.YELLOW}[6] {Fore.WHITE}Kirim File (Push)       {Fore.CYAN}│ {Fore.WHITE}Transfer file ke HP")
-                print(f"    {Fore.YELLOW}[7] {Fore.WHITE}Wireless Mic Mode       {Fore.CYAN}│ {Fore.WHITE}Gunakan HP sebagai mic PC")
-                print(f"    {Fore.YELLOW}[8] {Fore.WHITE}Mode OTG                {Fore.CYAN}│ {Fore.WHITE}Keyboard/Mouse fisik tanpa layar")
-                print(f"    {Fore.YELLOW}[9] {Fore.WHITE}Mode Spy Cam            {Fore.CYAN}│ {Fore.WHITE}Perekam kamera tersembunyi")
+                print(f"    {Fore.YELLOW}[3] {Fore.WHITE}Auto-Connect WiFi       {Fore.CYAN}│ {Fore.WHITE}Konek 1-tombol ke IP terakhir")
+                print(f"    {Fore.YELLOW}[4] {Fore.WHITE}Wireless Debugging      {Fore.CYAN}│ {Fore.WHITE}Mirror via Android 11+ Wireless Debug")
+                print(f"    {Fore.YELLOW}[5] {Fore.WHITE}Riwayat Sesi            {Fore.CYAN}│ {Fore.WHITE}Lihat log sesi mirroring sebelumnya")
+                print(f"    {Fore.YELLOW}[6] {Fore.WHITE}Install APK (Sideload)  {Fore.CYAN}│ {Fore.WHITE}Drag & drop file APK ke HP")
+                print(f"    {Fore.YELLOW}[7] {Fore.WHITE}Kirim File (Push)       {Fore.CYAN}│ {Fore.WHITE}Transfer file ke HP")
+                print(f"    {Fore.YELLOW}[8] {Fore.WHITE}Wireless Mic Mode       {Fore.CYAN}│ {Fore.WHITE}Gunakan HP sebagai mic PC")
+                print(f"    {Fore.YELLOW}[9] {Fore.WHITE}Mode OTG                {Fore.CYAN}│ {Fore.WHITE}Keyboard/Mouse fisik tanpa layar")
+                print(f"    {Fore.YELLOW}[10]{Fore.WHITE} Mode Spy Cam           {Fore.CYAN}│ {Fore.WHITE}Perekam kamera tersembunyi")
                 print(f"    {Fore.RED}[0] {Fore.WHITE}Kembali ke Pilihan Bahasa\n")
             else:
                 print(f"  {Fore.CYAN}Main Menu:\n")
                 print(f"    {Fore.YELLOW}[1] {Fore.WHITE}USB Connection          {Fore.CYAN}│ {Fore.WHITE}Mirror via USB cable")
                 print(f"    {Fore.YELLOW}[2] {Fore.WHITE}WiFi Connection         {Fore.CYAN}│ {Fore.WHITE}Mirror via WiFi network")
-                print(f"    {Fore.YELLOW}[3] {Fore.WHITE}Wireless Debugging      {Fore.CYAN}│ {Fore.WHITE}Mirror via Android 11+ Wireless Debug")
-                print(f"    {Fore.YELLOW}[4] {Fore.WHITE}Session History         {Fore.CYAN}│ {Fore.WHITE}View previous mirroring session logs")
-                print(f"    {Fore.YELLOW}[5] {Fore.WHITE}Install APK (Sideload)  {Fore.CYAN}│ {Fore.WHITE}Drag & drop APK file to phone")
-                print(f"    {Fore.YELLOW}[6] {Fore.WHITE}Send File (Push)        {Fore.CYAN}│ {Fore.WHITE}Transfer file to phone")
-                print(f"    {Fore.YELLOW}[7] {Fore.WHITE}Wireless Mic Mode       {Fore.CYAN}│ {Fore.WHITE}Use phone as PC mic")
-                print(f"    {Fore.YELLOW}[8] {Fore.WHITE}OTG Mode                {Fore.CYAN}│ {Fore.WHITE}Physical Keyboard/Mouse without screen")
-                print(f"    {Fore.YELLOW}[9] {Fore.WHITE}Spy Cam Mode            {Fore.CYAN}│ {Fore.WHITE}Hidden camera recorder")
+                print(f"    {Fore.YELLOW}[3] {Fore.WHITE}Auto-Connect WiFi       {Fore.CYAN}│ {Fore.WHITE}1-click connect to last IP")
+                print(f"    {Fore.YELLOW}[4] {Fore.WHITE}Wireless Debugging      {Fore.CYAN}│ {Fore.WHITE}Mirror via Android 11+ Wireless Debug")
+                print(f"    {Fore.YELLOW}[5] {Fore.WHITE}Session History         {Fore.CYAN}│ {Fore.WHITE}View previous mirroring session logs")
+                print(f"    {Fore.YELLOW}[6] {Fore.WHITE}Install APK (Sideload)  {Fore.CYAN}│ {Fore.WHITE}Drag & drop APK file to phone")
+                print(f"    {Fore.YELLOW}[7] {Fore.WHITE}Send File (Push)        {Fore.CYAN}│ {Fore.WHITE}Transfer file to phone")
+                print(f"    {Fore.YELLOW}[8] {Fore.WHITE}Wireless Mic Mode       {Fore.CYAN}│ {Fore.WHITE}Use phone as PC mic")
+                print(f"    {Fore.YELLOW}[9] {Fore.WHITE}OTG Mode                {Fore.CYAN}│ {Fore.WHITE}Physical Keyboard/Mouse without screen")
+                print(f"    {Fore.YELLOW}[10]{Fore.WHITE} Spy Cam Mode           {Fore.CYAN}│ {Fore.WHITE}Hidden camera recorder")
                 print(f"    {Fore.RED}[0] {Fore.WHITE}Back to Language Selection\n")
 
-            cc = get_input("  Choice [0-9]: ", [str(i) for i in range(10)])
+            cc = get_input("  Choice [0-10]: ", [str(i) for i in range(11)])
             if   cc == "0": break
             elif cc == "1": connect_usb(lang)
             elif cc == "2": connect_wifi(lang)
-            elif cc == "3": connect_wd(lang)
-            elif cc == "4": show_session_log(lang)
-            elif cc == "5": install_apk(lang)
-            elif cc == "6": push_file(lang)
-            elif cc == "7": start_wireless_mic(lang)
-            elif cc == "8": start_otg_mode(lang)
-            elif cc == "9": start_spy_cam(lang)
+            elif cc == "3": auto_connect_wifi(lang)
+            elif cc == "4": connect_wd(lang)
+            elif cc == "5": show_session_log(lang)
+            elif cc == "6": install_apk(lang)
+            elif cc == "7": push_file(lang)
+            elif cc == "8": start_wireless_mic(lang)
+            elif cc == "9": start_otg_mode(lang)
+            elif cc == "10": start_spy_cam(lang)
 
 
 if __name__ == "__main__":
